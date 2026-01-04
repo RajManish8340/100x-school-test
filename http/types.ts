@@ -1,4 +1,3 @@
-
 import { z } from 'zod'
 
 export const SignupSchema = z.object({
@@ -11,4 +10,11 @@ export const SignupSchema = z.object({
 export const LoginSchema = z.object({
     email: z.string(),
     password: z.string(),
+})
+
+export const CreateClassSchema = z.object({
+    className: z.string(),
+})
+export const AddStudentSchema = z.object({
+    studentId : z.string()
 })
