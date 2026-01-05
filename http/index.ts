@@ -1,6 +1,6 @@
 import express from 'express';
-import { AddStudentSchema, CreateClassSchema, LoginSchema, SignupSchema } from './types';
-import { ClassModel, UserModel } from './models';
+import { AddStudentSchema, AttendanceStartSchema, CreateClassSchema, LoginSchema, SignupSchema } from './types';
+import { AttendanceModel, ClassModel, UserModel } from './models';
 import jwt from 'jsonwebtoken';
 import { authMiddleware, teacherMiddleware } from './middleware';
 import mongoose from 'mongoose';
@@ -157,7 +157,7 @@ app.post('/class/:id/add-student' , authMiddleware, teacherMiddleware, async (re
     }
 
     const classDb = await ClassModel.findOne({
-        _id : req.params._id
+        _id : req.params.id
     })
 
     if(!classDb) {
@@ -207,7 +207,7 @@ app.post('/class/:id/add-student' , authMiddleware, teacherMiddleware, async (re
 
 app.get('/class/:id', authMiddleware, async (req , res) => {
     const classDb = await ClassModel.findOne({
-        _id : req.params._id,
+        _id : req.params.id,
     })
     if (!classDb) {
       res.status(404).json({
@@ -259,3 +259,44 @@ app.get("/students", authMiddleware, teacherMiddleware, async (req, res) => {
     }))
 });
 });
+
+app.get("/class/:id/my-attendance", authMiddleware, async (req, res) => {
+  const classId = req.params.id;
+  const userId = req.userId;
+
+  const attendance = await AttendanceModel.find({
+    classId,
+    studentId: userId,
+  });
+  if (attendance) {
+    res.json({
+      success: true,
+      data: {
+        classId: classId,
+        status: "present",
+      },
+    });
+  } else {
+    res.json({
+      success: true,
+      data: {
+        classId: classId,
+        status: null,
+      },
+    });
+  }
+});
+
+app.post('/attendance/start' ,authMiddleware , teacherMiddleware, async (req , res) => {
+    const {success , data } = AttendanceStartSchema.safeParse(req.body)
+
+    if (!success) {
+        res.status(400).json({
+            "success": false,
+            "error": "Invalid request schema",
+        })
+        return
+    }
+
+    
+})
