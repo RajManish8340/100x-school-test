@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http"
 import {
   AddStudentSchema,
   AttendanceStartSchema,
@@ -7,23 +8,87 @@ import {
   SignupSchema,
 } from "./types";
 import { AttendanceModel, ClassModel, UserModel } from "./models";
-import jwt from "jsonwebtoken";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import { authMiddleware, teacherMiddleware } from "./middleware";
 import mongoose from "mongoose";
-import { record } from "zod";
+import { WebSocketServer, WebSocket} from "ws";
 
-const app = express();
-app.use(express.json());
 
+const app = express()
+
+const server = http.createServer(app)
+
+app.use(express.json())
 const port = 3000;
-app.listen(port);
+server.listen(port);
 console.log(`seever running at port ${port}`);
+
+const wss = new WebSocketServer({ server , path: '/ws'})
 
 let activeSession: {
   classId: string;
   startedAt: Date;
   attendance: Record<string, string>;
 } | null = null;
+
+wss.on("connection", (ws, req) => {
+  try {
+    const url = new URL(req.url!, "http://localhost");
+    const token = url.searchParams.get("token");
+
+    if (!token) {
+      ws.send(
+        JSON.stringify({
+          event: "ERROR",
+          data: {
+            message: "Unauthorized or invalid token",
+          },
+        })
+      );
+      ws.close();
+      return
+    }
+
+    const { userId, role } = jwt.verify(
+      token!,
+      process.env.JWT_PASSWORD!
+    ) as JwtPayload;
+
+    ws.user = {
+      userId,
+      role,
+    };
+
+    ws.on("message", (msg) => {
+      const message = msg.toString();
+      let parsedData 
+      try{
+        parsedData = JSON.parse(message)
+
+      }catch{
+        ws.send(JSON.stringify({
+          event: "ERROR" ,
+          data : {
+            message : "Invalid JSON "
+          }
+        }))
+        return
+      }
+      console.log("EVENT RECIEVED : ",  parsedData.event);
+    });
+  } catch (e) {
+    ws.send(
+      JSON.stringify({
+        event: "ERROR",
+        data: {
+          message: "Unauthorized or invalid token",
+        },
+      })
+    );
+    ws.close();
+    return
+  }
+});
 
 app.post("/auth/signup", async (req, res) => {
   const { success, data } = SignupSchema.safeParse(req.body);
