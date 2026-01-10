@@ -4,7 +4,7 @@ declare module "ws" {
     export interface WebSocket {
         user?: {
             userId: string ,
-            role : ["student" , "teacher"]
+            role : "student"|"teacher"
         }
     }
 }

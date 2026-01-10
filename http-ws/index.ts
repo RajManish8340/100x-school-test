@@ -12,6 +12,7 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 import { authMiddleware, teacherMiddleware } from "./middleware";
 import mongoose from "mongoose";
 import { WebSocketServer, WebSocket} from "ws";
+import { parse } from "path";
 
 
 const app = express()
@@ -75,6 +76,47 @@ wss.on("connection", (ws, req) => {
         return
       }
       console.log("EVENT RECIEVED : ",  parsedData.event);
+
+      switch (parsedData.event) {
+        case "ATTENDANCE_MARKED":
+          if (ws.user?.role == "teacher") {
+            if (!activeSession) {
+              ws.send(
+                JSON.stringify({
+                  event: "ERROR",
+                  data: {
+                    message: "No active attendance session",
+                  },
+                })
+              );
+              ws.close();
+              return
+            } else {
+              activeSession.attendance[parsedData.data.studentId] = parsedData.data.status
+
+              wss.clients.forEach((client) => {
+              client.send(
+                JSON.stringify({
+                  event: "ATTENDANCE_MARKED",
+                  data: {
+                    studentId: parsedData.data.studentId,
+                    status: parsedData.data.status,
+                  },
+                })
+              );
+              })
+            } 
+          } else {
+            ws.send(
+              JSON.stringify({
+                event: "ERROR",
+                data: {
+                  message: "Forbidden, teacher event only",
+                },
+              })
+            );
+          }
+      }
     });
   } catch (e) {
     ws.send(
