@@ -1,5 +1,5 @@
 import express from "express";
-import http from "http"
+import http from "http";
 import {
   AddStudentSchema,
   AttendanceStartSchema,
@@ -11,20 +11,18 @@ import { AttendanceModel, ClassModel, UserModel } from "./models";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { authMiddleware, teacherMiddleware } from "./middleware";
 import mongoose from "mongoose";
-import { WebSocketServer, WebSocket} from "ws";
-import { parse } from "path";
+import { WebSocketServer, WebSocket } from "ws";
 
+const app = express();
 
-const app = express()
+const server = http.createServer(app);
 
-const server = http.createServer(app)
-
-app.use(express.json())
+app.use(express.json());
 const port = 3000;
 server.listen(port);
 console.log(`seever running at port ${port}`);
 
-const wss = new WebSocketServer({ server , path: '/ws'})
+const wss = new WebSocketServer({ server, path: "/ws" });
 
 let activeSession: {
   classId: string;
@@ -44,15 +42,15 @@ wss.on("connection", (ws, req) => {
           data: {
             message: "Unauthorized or invalid token",
           },
-        })
+        }),
       );
       ws.close();
-      return
+      return;
     }
 
     const { userId, role } = jwt.verify(
       token!,
-      process.env.JWT_PASSWORD!
+      process.env.JWT_PASSWORD!,
     ) as JwtPayload;
 
     ws.user = {
@@ -60,22 +58,24 @@ wss.on("connection", (ws, req) => {
       role,
     };
 
-    ws.on("message", (msg) => {
+    ws.on("message", async (msg) => {
       const message = msg.toString();
-      let parsedData 
-      try{
-        parsedData = JSON.parse(message)
-
-      }catch{
-        ws.send(JSON.stringify({
-          event: "ERROR" ,
-          data : {
-            message : "Invalid JSON "
-          }
-        }))
-        return
+      let parsedData;
+      try {
+        parsedData = JSON.parse(message);
+      } catch {
+        ws.send(
+          JSON.stringify({
+            event: "ERROR",
+            data: {
+              message: "Invalid JSON ",
+            },
+          }),
+        );
+        ws.close();
+        return;
       }
-      console.log("EVENT RECIEVED : ",  parsedData.event);
+      console.log("EVENT RECIEVED : ", parsedData.event);
 
       switch (parsedData.event) {
         case "ATTENDANCE_MARKED":
@@ -87,25 +87,26 @@ wss.on("connection", (ws, req) => {
                   data: {
                     message: "No active attendance session",
                   },
-                })
+                }),
               );
               ws.close();
-              return
+              return;
             } else {
-              activeSession.attendance[parsedData.data.studentId] = parsedData.data.status
+              activeSession.attendance[parsedData.data.studentId] =
+                parsedData.data.status;
 
               wss.clients.forEach((client) => {
-              client.send(
-                JSON.stringify({
-                  event: "ATTENDANCE_MARKED",
-                  data: {
-                    studentId: parsedData.data.studentId,
-                    status: parsedData.data.status,
-                  },
-                })
-              );
-              })
-            } 
+                client.send(
+                  JSON.stringify({
+                    event: "ATTENDANCE_MARKED",
+                    data: {
+                      studentId: parsedData.data.studentId,
+                      status: parsedData.data.status,
+                    },
+                  }),
+                );
+              });
+            }
           } else {
             ws.send(
               JSON.stringify({
@@ -113,8 +114,32 @@ wss.on("connection", (ws, req) => {
                 data: {
                   message: "Forbidden, teacher event only",
                 },
-              })
+              }),
             );
+          }
+          break;
+        case "TODAY_SUMMARY":
+          if (ws.user?.role === "teacher") {
+            const UserDb = await ClassModel.find({
+              _id: activeSession?.classId,
+            });
+            const total = UserDb.length;
+            const present = Object.keys(activeSession?.attendance || []).filter(
+              (x) => activeSession?.attendance[x] === "present",
+            ).length;
+            const absent = total - present;
+            wss.clients.forEach((client) => {
+              client.send(
+                JSON.stringify({
+                  event: "TODAY_SUMMARY",
+                  data: {
+                    present,
+                    absent,
+                    total,
+                  },
+                }),
+              );
+            });
           }
       }
     });
@@ -125,10 +150,10 @@ wss.on("connection", (ws, req) => {
         data: {
           message: "Unauthorized or invalid token",
         },
-      })
+      }),
     );
     ws.close();
-    return
+    return;
   }
 });
 
@@ -167,7 +192,7 @@ app.post("/auth/signup", async (req, res) => {
       _id: userDb._id,
       name: userDb.name,
       email: userDb.email,
-      role: userDb.role
+      role: userDb.role,
     },
   });
 });
@@ -199,7 +224,7 @@ app.post("/auth/login", async (req, res) => {
       role: userDb.role,
       userId: userDb._id,
     },
-    process.env.JWT_PASSWORD!
+    process.env.JWT_PASSWORD!,
   );
 
   res.json({
@@ -233,7 +258,7 @@ app.get("/auth/me", authMiddleware, async (req, res) => {
   });
 });
 
-app.post("/class",authMiddleware, teacherMiddleware, async (req, res) => {
+app.post("/class", authMiddleware, teacherMiddleware, async (req, res) => {
   const { success, data } = CreateClassSchema.safeParse(req.body);
 
   if (!success) {
@@ -261,7 +286,8 @@ app.post("/class",authMiddleware, teacherMiddleware, async (req, res) => {
   });
 });
 
-app.post("/class/:id/add-student",
+app.post(
+  "/class/:id/add-student",
   authMiddleware,
   teacherMiddleware,
   async (req, res) => {
@@ -298,19 +324,19 @@ app.post("/class/:id/add-student",
       });
       return;
     }
-    
-    // do not add duplicae students just send the data of the user 
-    if(classDb.studentIds.map((s) => s.toString()).includes(data.studentId)){
+
+    // do not add duplicae students just send the data of the user
+    if (classDb.studentIds.map((s) => s.toString()).includes(data.studentId)) {
       res.json({
-        success: true ,
+        success: true,
         data: {
-        _id: classDb._id,
-        className: classDb.className,
-        teacherId: classDb.teacherId,
-        studentIds: classDb.studentIds,
-        }
-      })
-      return
+          _id: classDb._id,
+          className: classDb.className,
+          teacherId: classDb.teacherId,
+          studentIds: classDb.studentIds,
+        },
+      });
+      return;
     }
 
     // TODO: clear this
@@ -319,7 +345,7 @@ app.post("/class/:id/add-student",
         success: false,
         error: "Forbidden, not class teacher",
       });
-      return
+      return;
     }
 
     // TODO: Understand what is this
@@ -335,7 +361,7 @@ app.post("/class/:id/add-student",
         studentIds: classDb.studentIds,
       },
     });
-  }
+  },
 );
 
 app.get("/class/:id", authMiddleware, async (req, res) => {
@@ -430,7 +456,8 @@ app.get("/class/:id/my-attendance", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/attendance/start",
+app.post(
+  "/attendance/start",
   authMiddleware,
   teacherMiddleware,
   async (req, res) => {
@@ -463,7 +490,7 @@ app.post("/attendance/start",
       return;
     }
 
-    // TODO: clear this 
+    // TODO: clear this
     activeSession = {
       classId: classDb._id.toString(),
       startedAt: new Date(),
@@ -477,5 +504,5 @@ app.post("/attendance/start",
         startedAt: activeSession.startedAt,
       },
     });
-  }
+  },
 );
